@@ -22,34 +22,25 @@ echo "==> Resolving dependencies"
 ( cd "$REPO_DIR" && go mod tidy )
 
 echo "==> Building binaries"
+# Builds made exactly on a release tag identify as that version; everything else
+# is a dev build (empty Tag → VCS-stamp identity, and the in-app updater treats
+# it as off the release channel).
+TAG="$(git -C "$REPO_DIR" describe --tags --exact-match 2>/dev/null || true)"
+LDFLAGS=""
+if [ -n "$TAG" ]; then
+  LDFLAGS="-X github.com/jarovkipt/lanfirst/internal/version.Tag=$TAG"
+  echo "    release tag $TAG"
+fi
 mkdir -p "$BIN_DIR"
-( cd "$REPO_DIR" && go build -o "$BIN_DIR/lanfirstd" ./cmd/lanfirstd )
+( cd "$REPO_DIR" && go build -ldflags "$LDFLAGS" -o "$BIN_DIR/lanfirstd" ./cmd/lanfirstd )
 # Staged build of the privileged helper; installed root-owned to $SBIN_DIR below.
-( cd "$REPO_DIR" && go build -o "$BIN_DIR/lanfirst-resolverd" ./cmd/lanfirst-resolverd )
+( cd "$REPO_DIR" && go build -ldflags "$LDFLAGS" -o "$BIN_DIR/lanfirst-resolverd" ./cmd/lanfirst-resolverd )
 
 echo "==> Building menu-bar app bundle"
-mkdir -p "$APP_DIR/Contents/MacOS"
-( cd "$REPO_DIR" && go build -o "$APP_DIR/Contents/MacOS/lanfirst" ./cmd/lanfirst )
-# Template menu-bar icons (committed PNGs from assets/render-icons.swift, with @2x
-# Retina reps). menuet loads them by name via [NSImage imageNamed:] from the
-# bundle's Resources dir and renders them as light/dark-aware template images.
-mkdir -p "$APP_DIR/Contents/Resources"
-cp "$REPO_DIR"/assets/icons/*.png "$APP_DIR/Contents/Resources/"
-# App icon (assets/render-appicon.swift). The app is LSUIElement so it never
-# shows in the Dock, but the icon appears in Finder, Get Info, and sharing UI.
-cp "$REPO_DIR/assets/AppIcon.icns" "$APP_DIR/Contents/Resources/"
-cat > "$APP_DIR/Contents/Info.plist" <<'PLIST'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-  <key>CFBundleName</key><string>lanfirst</string>
-  <key>CFBundleIdentifier</key><string>com.lanfirst.menubar</string>
-  <key>CFBundleExecutable</key><string>lanfirst</string>
-  <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleIconFile</key><string>AppIcon</string>
-  <key>LSUIElement</key><true/>
-</dict></plist>
-PLIST
+MENUBAR_BIN="$(mktemp -d)/lanfirst"
+( cd "$REPO_DIR" && go build -ldflags "$LDFLAGS" -o "$MENUBAR_BIN" ./cmd/lanfirst )
+bash "$REPO_DIR/install/make-app-bundle.sh" "$REPO_DIR" "$APP_DIR" "$MENUBAR_BIN" "${TAG:-0.0.0}"
+rm -f "$MENUBAR_BIN"
 
 echo "==> Installing config"
 mkdir -p "$CFG_DIR"

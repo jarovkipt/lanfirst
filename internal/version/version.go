@@ -18,6 +18,13 @@ import (
 // tagged releases). Empty by default.
 var Tag string
 
+// ReleaseTag returns the semver tag this binary was released as (e.g. "v0.1.0"),
+// or "" for dev/source builds. The updater uses this to decide whether the
+// binary is on the release channel at all.
+func ReleaseTag() string {
+	return Tag
+}
+
 // revision returns the short git revision plus a "-dirty" suffix when the working
 // tree had uncommitted changes at build time. Falls back to "unknown".
 func revision() string {

@@ -1,0 +1,57 @@
+# Builds a macOS (arm64) release tarball when a v* tag is pushed and publishes
+# it as a GitHub Release. Must run on macOS: the menu-bar app uses menuet
+# (cgo + Cocoa). The in-app updater downloads the stable-named asset from
+# releases/latest, so keep the asset filename unchanged across releases.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # create the release
+
+jobs:
+  release:
+    runs-on: macos-15 # Apple Silicon; clang present for cgo
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build release tarball
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          LDFLAGS="-X github.com/jarovkipt/lanfirst/internal/version.Tag=$TAG"
+          STAGE="dist/lanfirst-$TAG"
+          mkdir -p "$STAGE/bin"
+          go build -ldflags "$LDFLAGS" -o "$STAGE/bin/lanfirstd"          ./cmd/lanfirstd
+          go build -ldflags "$LDFLAGS" -o "$STAGE/bin/lanfirst-resolverd" ./cmd/lanfirst-resolverd
+          go build -ldflags "$LDFLAGS" -o dist/lanfirst-menubar           ./cmd/lanfirst
+          bash install/make-app-bundle.sh "$PWD" "$STAGE/lanfirst.app" dist/lanfirst-menubar "$TAG"
+          cp install/com.lanfirst.daemon.plist install/com.lanfirst.menubar.plist install/com.lanfirst.resolverd.plist "$STAGE/"
+          cp install/release-install.sh "$STAGE/install.sh"
+          chmod +x "$STAGE/install.sh"
+          cp config.example.yaml "$STAGE/"
+          tar -C dist -czf dist/lanfirst-macos-arm64.tar.gz "lanfirst-$TAG"
+          (cd dist && shasum -a 256 lanfirst-macos-arm64.tar.gz > checksums.txt)
+
+      - name: Smoke test binaries
+        run: |
+          ./dist/lanfirst-${{ github.ref_name }}/bin/lanfirstd -version
+          ./dist/lanfirst-${{ github.ref_name }}/lanfirst.app/Contents/MacOS/lanfirst -version
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            dist/lanfirst-macos-arm64.tar.gz dist/checksums.txt \
+            --generate-notes
