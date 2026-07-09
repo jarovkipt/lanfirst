@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Template: install.sh substitutes __APP__ and __HOME__. Installed to
+     ~/Library/LaunchAgents/com.lanfirst.menubar.plist so the menu-bar app
+     starts at login. It is only a controller; the daemon runs independently. -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.lanfirst.menubar</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>__APP__/Contents/MacOS/lanfirst</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <false/>
+    <key>LimitLoadToSessionType</key>
+    <string>Aqua</string>
+</dict>
+</plist>

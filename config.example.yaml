@@ -1,0 +1,26 @@
+# lanfirst daemon config. Copy to ~/.config/lanfirst/config.yaml and edit.
+# The daemon watches this file and reloads on save.
+
+listen: "127.0.0.1:5354"   # high port so the daemon needs no root
+
+health:
+  interval: 5s             # how often each internal target is probed
+  timeout: 1s              # TCP connect timeout per probe
+
+ttl: 1                     # DNS TTL (seconds), applied to internal answers and as the
+                           # cap on forwarded public answers; keep low so toggling
+                           # routing / failover is reflected quickly by the OS DNS cache
+
+# Explicit public DNS to forward to in public mode.
+# Leave empty to auto-derive from `scutil --dns` (excluding lanfirst itself).
+upstream: []
+# upstream: ["1.1.1.1:53", "8.8.8.8:53"]
+
+entries:
+  - pattern: "*.example.com"   # wildcard covers apex + all subdomains
+    target: "192.168.1.10"      # internal reverse proxy
+    port: 443                    # port used for the health-check
+
+  - pattern: "app.example.internal"
+    target: "192.168.1.20"
+    port: 443

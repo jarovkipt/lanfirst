@@ -1,0 +1,14 @@
+# Build output
+/lanfirstd
+/lanfirst
+/lanfirst-resolverd
+*.app/
+
+# Go
+/vendor/
+
+# macOS
+.DS_Store
+
+# Local logs
+*.log

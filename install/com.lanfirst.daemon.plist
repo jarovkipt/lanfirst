@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Template: install.sh substitutes __BIN__ and __HOME__ before installing
+     this to ~/Library/LaunchAgents/com.lanfirst.daemon.plist -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.lanfirst.daemon</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>__BIN__</string>
+        <string>-config</string>
+        <string>__HOME__/.config/lanfirst/config.yaml</string>
+    </array>
+    <key>KeepAlive</key>
+    <true/>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>__HOME__/.config/lanfirst/daemon.log</string>
+    <key>StandardErrorPath</key>
+    <string>__HOME__/.config/lanfirst/daemon.log</string>
+</dict>
+</plist>
