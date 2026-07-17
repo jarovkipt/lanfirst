@@ -46,6 +46,14 @@ The act of forwarding a query to public DNS because the internal target is
 unreachable. The transition into public mode.
 _Avoid_: failover (reserve for the overall behaviour, not this single act)
 
+**Exception**:
+A host carved out of an entry's match pattern that stays on public DNS even when
+the target is reachable — e.g. keep `dl.corp.io` public under `*.corp.io`. Written
+as a full host or wildcard; a bare subdomain (`dl`) is qualified against the
+pattern's domain. Enforced in the resolver, so an excepted name simply falls back
+to upstream.
+_Avoid_: exclude, ignore, blocklist
+
 **Upstream**:
 The explicit public DNS servers lanfirst forwards to in public mode. Must never be
 the system resolver, or queries loop back into lanfirst.
