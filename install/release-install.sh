@@ -39,6 +39,32 @@ fail() {
 }
 trap 'fail "install step failed (see ~/Library/Logs/lanfirst-update.log)"' ERR
 
+# reload_agent re-registers a launchd service onto its (possibly newly-swapped)
+# binary: bootout, wait for teardown, then bootstrap. `launchctl bootout` is
+# asynchronous — it returns before launchd has finished tearing the job down and
+# reaping the process, so an immediate bootstrap races and fails with EIO (5) or
+# "already loaded" (37). We poll until the job is gone, then bootstrap with a
+# short retry loop; the final attempt is unsuppressed so a genuine failure still
+# trips `set -e`/the ERR trap. bootout+bootstrap (vs bootstrap-if-absent +
+# kickstart) is also what re-pins launchd's per-service launch constraint (LWCR)
+# to the new binary's code-signature hash — kickstarting a swapped binary against
+# the stale LWCR is what macOS kills as SIGKILL "Code Signature Invalid".
+# Args: <domain> <label> <plist>   e.g. reload_agent "gui/$UID_NUM" com.lanfirst.daemon "$PLIST"
+reload_agent() {
+  _dom="$1"; _lbl="$2"; _plist="$3"
+  launchctl bootout "$_dom/$_lbl" 2>/dev/null || true
+  _i=0
+  while launchctl print "$_dom/$_lbl" >/dev/null 2>&1; do
+    _i=$((_i + 1)); [ "$_i" -ge 50 ] && break; sleep 0.2   # cap ~10s
+  done
+  _i=0
+  while [ "$_i" -lt 25 ]; do
+    launchctl bootstrap "$_dom" "$_plist" 2>/dev/null && return 0
+    _i=$((_i + 1)); sleep 0.2
+  done
+  launchctl bootstrap "$_dom" "$_plist"   # last try, surface the real error
+}
+
 [ "$(uname)" = "Darwin" ] || fail "this installer is for macOS"
 [ -x "$STAGE/bin/lanfirstd" ] || fail "tarball incomplete: bin/lanfirstd missing"
 [ -x "$STAGE/bin/lanfirst-resolverd" ] || fail "tarball incomplete: bin/lanfirst-resolverd missing"
@@ -60,8 +86,19 @@ set -e
 install -d -o root -g wheel -m 755 "$SBIN_DIR"
 install -o root -g wheel -m 755 "$STAGE/bin/lanfirst-resolverd" "$SBIN_DIR/lanfirst-resolverd"
 install -o root -g wheel -m 644 "$RESOLVERD_PLIST_TMP" "$LD_DIR/com.lanfirst.resolverd.plist"
-launchctl bootout system "$LD_DIR/com.lanfirst.resolverd.plist" 2>/dev/null || true
-launchctl bootstrap system "$LD_DIR/com.lanfirst.resolverd.plist"
+# bootout is async; poll until torn down, then bootstrap with retry (see
+# reload_agent in the parent script for the rationale — EIO 5 / already-loaded 37).
+launchctl bootout system/com.lanfirst.resolverd 2>/dev/null || true
+i=0
+while launchctl print system/com.lanfirst.resolverd >/dev/null 2>&1; do
+  i=\$((i + 1)); [ "\$i" -ge 50 ] && break; sleep 0.2
+done
+i=0
+while [ "\$i" -lt 25 ]; do
+  launchctl bootstrap system "$LD_DIR/com.lanfirst.resolverd.plist" 2>/dev/null && break
+  i=\$((i + 1)); sleep 0.2
+done
+[ "\$i" -lt 25 ] || launchctl bootstrap system "$LD_DIR/com.lanfirst.resolverd.plist"
 EOF
 
 echo "==> Installing privileged resolver-sync helper (admin password required)"
@@ -100,20 +137,13 @@ sed -e "s#__BIN__#$BIN_DIR/lanfirstd#g" -e "s#__HOME__#$HOME_DIR#g" \
   "$STAGE/com.lanfirst.daemon.plist" > "$LA_DIR/com.lanfirst.daemon.plist"
 sed -e "s#__APP__#$APP_DIR#g" -e "s#__HOME__#$HOME_DIR#g" \
   "$STAGE/com.lanfirst.menubar.plist" > "$LA_DIR/com.lanfirst.menubar.plist"
-# --- 5. Re-register both user agents onto the new binaries. We bootout then
-# bootstrap (rather than bootstrap-if-absent + kickstart) so launchd re-pins its
-# per-service launch constraint (LWCR) to the NEW binary's code-signature hash.
-# On an in-place update the service is already loaded, so a plain bootstrap is a
-# no-op and a following kickstart re-execs the swapped binary against the OLD
-# cdhash — which macOS kills with SIGKILL "Code Signature Invalid". Both agents
-# have RunAtLoad=true, so bootstrap starts them fresh; no kickstart needed. The
+# --- 5. Re-register both user agents onto the new binaries (see reload_agent).
+# Both have RunAtLoad=true, so bootstrap starts them fresh — no kickstart. The
 # updater is spawned detached (setsid), so booting out the menu-bar app that
-# launched it does not kill this script. (The root resolverd above already does
-# this same bootout/bootstrap dance for the same reason.)
-for svc in com.lanfirst.daemon com.lanfirst.menubar; do
-  launchctl bootout "gui/$UID_NUM/$svc" 2>/dev/null || true
-  launchctl bootstrap "gui/$UID_NUM" "$LA_DIR/$svc.plist"
-done
+# launched this script does not kill the script; the menu-bar app is reloaded
+# last so it is the final thing to come back.
+reload_agent "gui/$UID_NUM" com.lanfirst.daemon  "$LA_DIR/com.lanfirst.daemon.plist"
+reload_agent "gui/$UID_NUM" com.lanfirst.menubar "$LA_DIR/com.lanfirst.menubar.plist"
 
 # --- 6. Done.
 rm -rf "$APP_DIR.old"
