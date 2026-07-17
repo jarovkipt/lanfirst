@@ -100,15 +100,20 @@ sed -e "s#__BIN__#$BIN_DIR/lanfirstd#g" -e "s#__HOME__#$HOME_DIR#g" \
   "$STAGE/com.lanfirst.daemon.plist" > "$LA_DIR/com.lanfirst.daemon.plist"
 sed -e "s#__APP__#$APP_DIR#g" -e "s#__HOME__#$HOME_DIR#g" \
   "$STAGE/com.lanfirst.menubar.plist" > "$LA_DIR/com.lanfirst.menubar.plist"
-launchctl bootstrap "gui/$UID_NUM" "$LA_DIR/com.lanfirst.daemon.plist" 2>/dev/null || true
-launchctl bootstrap "gui/$UID_NUM" "$LA_DIR/com.lanfirst.menubar.plist" 2>/dev/null || true
-
-# --- 5. Restart user services onto the new binaries. kickstart -k kills the
-# running instance and starts the freshly installed one; for the menu-bar app
-# (KeepAlive=false) this IS the relaunch mechanism — when the updater was
-# spawned from the app itself, this line is what replaces the running app.
-launchctl kickstart -k "gui/$UID_NUM/com.lanfirst.daemon"
-launchctl kickstart -k "gui/$UID_NUM/com.lanfirst.menubar"
+# --- 5. Re-register both user agents onto the new binaries. We bootout then
+# bootstrap (rather than bootstrap-if-absent + kickstart) so launchd re-pins its
+# per-service launch constraint (LWCR) to the NEW binary's code-signature hash.
+# On an in-place update the service is already loaded, so a plain bootstrap is a
+# no-op and a following kickstart re-execs the swapped binary against the OLD
+# cdhash — which macOS kills with SIGKILL "Code Signature Invalid". Both agents
+# have RunAtLoad=true, so bootstrap starts them fresh; no kickstart needed. The
+# updater is spawned detached (setsid), so booting out the menu-bar app that
+# launched it does not kill this script. (The root resolverd above already does
+# this same bootout/bootstrap dance for the same reason.)
+for svc in com.lanfirst.daemon com.lanfirst.menubar; do
+  launchctl bootout "gui/$UID_NUM/$svc" 2>/dev/null || true
+  launchctl bootstrap "gui/$UID_NUM" "$LA_DIR/$svc.plist"
+done
 
 # --- 6. Done.
 rm -rf "$APP_DIR.old"
