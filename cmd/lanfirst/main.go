@@ -105,12 +105,79 @@ func entrySubmenu(e ipc.EntryStatus) func() []menuet.MenuItem {
 		if e.LAN {
 			mode = "LAN → " + e.Target
 		}
-		return []menuet.MenuItem{
+		items := []menuet.MenuItem{
 			{Text: "Target: " + e.Target},
 			{Text: "Mode: " + mode},
 			{Type: menuet.Separator},
-			{Text: "Remove…", Clicked: func() { removeDomain(e.Pattern) }},
 		}
+		// Exceptions: subdomains kept on public DNS even though they match Pattern.
+		if len(e.Except) > 0 {
+			items = append(items, menuet.MenuItem{Text: "Exceptions (public DNS):"})
+			for _, ex := range e.Except {
+				ex := ex // capture for the closure
+				items = append(items, menuet.MenuItem{
+					Text:    "  " + ex,
+					Clicked: func() { removeException(e.Pattern, ex) },
+				})
+			}
+			items = append(items, menuet.MenuItem{Type: menuet.Separator})
+		}
+		items = append(items,
+			menuet.MenuItem{Text: "Add exception…", Clicked: func() { addException(e.Pattern) }},
+			menuet.MenuItem{Type: menuet.Separator},
+			menuet.MenuItem{Text: "Remove…", Clicked: func() { removeDomain(e.Pattern) }},
+		)
+		return items
+	}
+}
+
+// addException prompts for a hostname under pattern to keep on public DNS.
+func addException(pattern string) {
+	res := menuet.App().Alert(menuet.Alert{
+		MessageText:     "Add exception for " + pattern,
+		InformativeText: "This hostname keeps using public DNS instead of the LAN target. Wildcards allowed, e.g. *.dev." + strings.TrimPrefix(pattern, "*."),
+		Buttons:         []string{"Add", "Cancel"},
+		Inputs:          []string{"hostname e.g. foo." + strings.TrimPrefix(pattern, "*.")},
+	})
+	if res.Button != 0 || len(res.Inputs) < 1 { // 0 == "Add"
+		return
+	}
+	except := strings.TrimSpace(res.Inputs[0])
+	if except == "" {
+		notifyErr("Exception hostname is required.")
+		return
+	}
+	resp, err := ipc.CallRequest(ipc.SocketPath(), ipc.Request{
+		Command: ipc.CmdAddExcept, Pattern: pattern, Except: except,
+	})
+	if err != nil {
+		notifyErr(fmt.Sprintf("Daemon unreachable: %v", err))
+		return
+	}
+	if !resp.OK {
+		notifyErr(resp.Error)
+	}
+}
+
+// removeException confirms and removes an exception from the given entry.
+func removeException(pattern, except string) {
+	res := menuet.App().Alert(menuet.Alert{
+		MessageText:     "Remove exception " + except + "?",
+		InformativeText: "It will resume routing to the LAN target under " + pattern + ".",
+		Buttons:         []string{"Remove", "Cancel"},
+	})
+	if res.Button != 0 { // 0 == "Remove"
+		return
+	}
+	resp, err := ipc.CallRequest(ipc.SocketPath(), ipc.Request{
+		Command: ipc.CmdRemoveExcept, Pattern: pattern, Except: except,
+	})
+	if err != nil {
+		notifyErr(fmt.Sprintf("Daemon unreachable: %v", err))
+		return
+	}
+	if !resp.OK {
+		notifyErr(resp.Error)
 	}
 }
 

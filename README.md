@@ -100,7 +100,10 @@ Manage domains from the menu bar — no terminal, no sudo:
 - **Add domain…** prompts for a match pattern (e.g. `*.corp.io`), the internal target IP, and a
   health-check port (default 443). The daemon writes it to `config.yaml` and `lanfirst-resolverd`
   syncs `/etc/resolver` automatically.
-- Each domain's submenu has **Remove…** (Edit = remove + re-add for now).
+- Each domain's submenu has **Add exception…** and **Remove…** (Edit = remove + re-add for now).
+- **Add exception…** carves a hostname out of a wildcard so it keeps using public DNS instead of
+  the LAN target — e.g. route all of `*.corp.io` internally but leave `status.corp.io` public.
+  Exceptions are exact (`status.corp.io`) or wildcard (`*.dev.corp.io`).
 
 Behind the scenes this is still `~/.config/lanfirst/config.yaml`, which the daemon reloads on
 save. The annotated [`config.example.yaml`](./config.example.yaml) documents every field; each
@@ -111,6 +114,8 @@ entries:
   - pattern: "*.example.com"   # wildcard = apex + all subdomains
     target: "192.168.1.10"      # internal reverse proxy
     port: 443                    # health-check port
+    except:                      # optional: kept on public DNS
+      - "public.example.com"
 ```
 
 Different domains can point to different internal targets; each is health-checked

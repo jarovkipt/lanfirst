@@ -22,24 +22,29 @@ const (
 	CmdEnable      = "enable"
 	CmdDisable     = "disable"
 	CmdReload      = "reload"
-	CmdAddEntry    = "add_entry"
-	CmdRemoveEntry = "remove_entry"
+	CmdAddEntry     = "add_entry"
+	CmdRemoveEntry  = "remove_entry"
+	CmdAddExcept    = "add_except"
+	CmdRemoveExcept = "remove_except"
 )
 
 // Request is sent by the controller to the daemon. Pattern/Target/Port carry the
 // entry data for CmdAddEntry and CmdRemoveEntry (RemoveEntry uses Pattern only).
+// Pattern+Except carry the exception data for CmdAddExcept and CmdRemoveExcept.
 type Request struct {
 	Command string `json:"command"`
 	Pattern string `json:"pattern,omitempty"`
 	Target  string `json:"target,omitempty"`
 	Port    int    `json:"port,omitempty"`
+	Except  string `json:"except,omitempty"`
 }
 
 // EntryStatus mirrors one resolver entry's live routing decision.
 type EntryStatus struct {
-	Pattern string `json:"pattern"`
-	Target  string `json:"target"`
-	LAN     bool   `json:"lan"`
+	Pattern string   `json:"pattern"`
+	Target  string   `json:"target"`
+	LAN     bool     `json:"lan"`
+	Except  []string `json:"except,omitempty"`
 }
 
 // Response is returned by the daemon.

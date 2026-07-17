@@ -129,6 +129,25 @@ func main() {
 				}); err != nil {
 					return ipc.Response{OK: false, Error: err.Error()}
 				}
+			case ipc.CmdAddExcept:
+				if err := mutateConfig(func(c *config.Config) (bool, error) {
+					return true, c.AddException(req.Pattern, req.Except)
+				}); err != nil {
+					return ipc.Response{OK: false, Error: err.Error()}
+				}
+			case ipc.CmdRemoveExcept:
+				if err := mutateConfig(func(c *config.Config) (bool, error) {
+					removed, err := c.RemoveException(req.Pattern, req.Except)
+					if err != nil {
+						return false, err
+					}
+					if !removed {
+						return false, fmt.Errorf("no exception %q on %q", req.Except, req.Pattern)
+					}
+					return true, nil
+				}); err != nil {
+					return ipc.Response{OK: false, Error: err.Error()}
+				}
 			case ipc.CmdStatus:
 				// fallthrough to status below
 			default:
@@ -154,7 +173,7 @@ func status(res *resolver.Resolver) ipc.Response {
 	modes := res.Modes()
 	entries := make([]ipc.EntryStatus, 0, len(modes))
 	for _, m := range modes {
-		entries = append(entries, ipc.EntryStatus{Pattern: m.Pattern, Target: m.Target, LAN: m.LAN})
+		entries = append(entries, ipc.EntryStatus{Pattern: m.Pattern, Target: m.Target, LAN: m.LAN, Except: m.Except})
 	}
 	return ipc.Response{OK: true, Enabled: res.Enabled(), Version: version.String(), Entries: entries}
 }

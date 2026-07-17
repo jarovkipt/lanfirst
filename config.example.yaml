@@ -20,6 +20,9 @@ entries:
   - pattern: "*.example.com"   # wildcard covers apex + all subdomains
     target: "192.168.1.10"      # internal reverse proxy
     port: 443                    # port used for the health-check
+    except:                      # optional: hostnames under the wildcard kept on
+      - "public.example.com"     # public DNS (never routed to the LAN target).
+      - "*.dev.example.com"      # exact or wildcard, e.g. exclude a whole subtree
 
   - pattern: "app.example.internal"
     target: "192.168.1.20"

@@ -17,9 +17,10 @@ import (
 
 // Entry is a single resolver entry: a match pattern routed to an internal target.
 type Entry struct {
-	Pattern string `yaml:"pattern"` // e.g. "*.example.com" or "app.example.internal"
-	Target  string `yaml:"target"`  // internal IP of the reverse proxy, e.g. "192.168.1.10"
-	Port    int    `yaml:"port"`    // TCP port used for the health-check, default 443
+	Pattern string   `yaml:"pattern"`          // e.g. "*.example.com" or "app.example.internal"
+	Target  string   `yaml:"target"`           // internal IP of the reverse proxy, e.g. "192.168.1.10"
+	Port    int      `yaml:"port"`             // TCP port used for the health-check, default 443
+	Except  []string `yaml:"except,omitempty"` // hostnames/patterns under Pattern kept on public DNS
 }
 
 // Health controls the reachability probe cadence.
@@ -161,6 +162,48 @@ func (c *Config) RemoveEntry(pattern string) bool {
 		}
 	}
 	return false
+}
+
+// AddException adds an exception hostname/pattern to the entry with the given
+// pattern. The exception is trimmed and lowercased to match resolver.matchPattern.
+// It errors if no such entry exists or the exception is already present.
+func (c *Config) AddException(pattern, except string) error {
+	except = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(except), "."))
+	if except == "" {
+		return fmt.Errorf("empty exception")
+	}
+	for i := range c.Entries {
+		if c.Entries[i].Pattern != pattern {
+			continue
+		}
+		for _, ex := range c.Entries[i].Except {
+			if ex == except {
+				return fmt.Errorf("exception %q already exists for %q", except, pattern)
+			}
+		}
+		c.Entries[i].Except = append(c.Entries[i].Except, except)
+		return nil
+	}
+	return fmt.Errorf("no entry with pattern %q", pattern)
+}
+
+// RemoveException drops an exception from the entry with the given pattern,
+// returning whether one was removed. It errors only if the entry is missing.
+func (c *Config) RemoveException(pattern, except string) (bool, error) {
+	except = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(except), "."))
+	for i := range c.Entries {
+		if c.Entries[i].Pattern != pattern {
+			continue
+		}
+		for j, ex := range c.Entries[i].Except {
+			if ex == except {
+				c.Entries[i].Except = append(c.Entries[i].Except[:j], c.Entries[i].Except[j+1:]...)
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+	return false, fmt.Errorf("no entry with pattern %q", pattern)
 }
 
 // Save atomically writes the config to path (temp file in the same dir + rename).

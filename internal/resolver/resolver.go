@@ -53,7 +53,8 @@ func (r *Resolver) Enabled() bool { return r.enabled.Load() }
 type Mode struct {
 	Pattern string
 	Target  string
-	LAN     bool // true = answering internal target, false = forwarding public
+	LAN     bool     // true = answering internal target, false = forwarding public
+	Except  []string // hostnames/patterns under Pattern kept on public DNS
 }
 
 // Modes returns the current per-entry routing state.
@@ -64,7 +65,7 @@ func (r *Resolver) Modes() []Mode {
 	out := make([]Mode, 0, len(r.entries))
 	for _, e := range r.entries {
 		lan := enabled && r.checker.Up(health.Target{IP: e.Target, Port: e.Port})
-		out = append(out, Mode{Pattern: e.Pattern, Target: e.Target, LAN: lan})
+		out = append(out, Mode{Pattern: e.Pattern, Target: e.Target, LAN: lan, Except: e.Except})
 	}
 	return out
 }
@@ -115,14 +116,31 @@ func (r *Resolver) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	_ = w.WriteMsg(resp)
 }
 
-// matchLocked finds the entry whose pattern covers name. Caller holds r.mu.
+// matchLocked finds the entry whose pattern covers name, unless name is one of
+// that entry's exceptions (kept on public DNS). Caller holds r.mu. An excepted
+// name skips to the next entry so an overlapping entry can still match.
 func (r *Resolver) matchLocked(name string) (config.Entry, bool) {
 	for _, e := range r.entries {
 		if matchPattern(e.Pattern, name) {
+			if matchesAnyException(e.Except, name) {
+				continue
+			}
 			return e, true
 		}
 	}
 	return config.Entry{}, false
+}
+
+// matchesAnyException reports whether name matches any exception pattern, reusing
+// matchPattern so exact ("foo.corp.io") and wildcard ("*.dev.corp.io") exceptions
+// both work.
+func matchesAnyException(except []string, name string) bool {
+	for _, ex := range except {
+		if matchPattern(ex, name) {
+			return true
+		}
+	}
+	return false
 }
 
 // matchPattern matches a domain against a pattern. "*.example.com" matches any
