@@ -18,6 +18,29 @@ func TestAddException(t *testing.T) {
 		t.Error("AddException duplicate: want error, got nil")
 	}
 
+	// Short/relative labels are qualified against the wildcard base domain.
+	if err := c.AddException("*.plshackme.com", "dl"); err != nil {
+		t.Fatalf("AddException short label: %v", err)
+	}
+	if err := c.AddException("*.plshackme.com", "*.dev"); err != nil {
+		t.Fatalf("AddException wildcard label: %v", err)
+	}
+	got := c.Entries[0].Except
+	want := []string{"public.plshackme.com", "dl.plshackme.com", "*.dev.plshackme.com"}
+	if len(got) != len(want) {
+		t.Fatalf("Except = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("Except[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+
+	// A short label that qualifies to an existing full exception is a duplicate.
+	if err := c.AddException("*.plshackme.com", "dl"); err == nil {
+		t.Error("AddException requalified duplicate: want error, got nil")
+	}
+
 	// Unknown entry rejected.
 	if err := c.AddException("*.nope.com", "x.nope.com"); err == nil {
 		t.Error("AddException unknown entry: want error, got nil")
@@ -52,5 +75,20 @@ func TestRemoveException(t *testing.T) {
 	// Unknown entry errors.
 	if _, err := c.RemoveException("*.nope.com", "x"); err == nil {
 		t.Error("RemoveException unknown entry: want error, got nil")
+	}
+}
+
+func TestRemoveExceptionShortLabel(t *testing.T) {
+	c := &Config{Entries: []Entry{{
+		Pattern: "*.plshackme.com", Target: "192.168.10.11", Port: 443,
+		Except: []string{"dl.plshackme.com"},
+	}}}
+	// Removing by the short label it was added as should qualify and match.
+	removed, err := c.RemoveException("*.plshackme.com", "dl")
+	if err != nil || !removed {
+		t.Fatalf("RemoveException short label = (%v, %v), want (true, nil)", removed, err)
+	}
+	if len(c.Entries[0].Except) != 0 {
+		t.Fatalf("Except = %v, want empty", c.Entries[0].Except)
 	}
 }

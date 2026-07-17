@@ -165,8 +165,10 @@ func (c *Config) RemoveEntry(pattern string) bool {
 }
 
 // AddException adds an exception hostname/pattern to the entry with the given
-// pattern. The exception is trimmed and lowercased to match resolver.matchPattern.
-// It errors if no such entry exists or the exception is already present.
+// pattern. The exception is trimmed and lowercased to match resolver.matchPattern,
+// and a short/relative label is qualified against the wildcard's base domain (see
+// qualifyException). It errors if no such entry exists or the exception is already
+// present.
 func (c *Config) AddException(pattern, except string) error {
 	except = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(except), "."))
 	if except == "" {
@@ -176,6 +178,7 @@ func (c *Config) AddException(pattern, except string) error {
 		if c.Entries[i].Pattern != pattern {
 			continue
 		}
+		except = qualifyException(c.Entries[i].Pattern, except)
 		for _, ex := range c.Entries[i].Except {
 			if ex == except {
 				return fmt.Errorf("exception %q already exists for %q", except, pattern)
@@ -187,6 +190,28 @@ func (c *Config) AddException(pattern, except string) error {
 	return fmt.Errorf("no entry with pattern %q", pattern)
 }
 
+// qualifyException expands a short/relative exception label against a wildcard
+// entry's base domain, so a user can type "dl" under "*.plshackme.com" and get
+// "dl.plshackme.com" (and "*.dev" -> "*.dev.plshackme.com"). A value already
+// within the base domain, or an entry whose pattern is not a wildcard, is
+// returned unchanged. The result is what resolver.matchPattern compares against
+// the full queried name, so unqualified labels would otherwise never match.
+func qualifyException(pattern, except string) string {
+	base := strings.ToLower(strings.TrimSuffix(pattern, "."))
+	if !strings.HasPrefix(base, "*.") {
+		return except // non-wildcard entry: exceptions are exact
+	}
+	base = base[2:]
+	if base == "" {
+		return except
+	}
+	stripped := strings.TrimPrefix(except, "*.")
+	if stripped == base || strings.HasSuffix(stripped, "."+base) {
+		return except // already qualified
+	}
+	return except + "." + base
+}
+
 // RemoveException drops an exception from the entry with the given pattern,
 // returning whether one was removed. It errors only if the entry is missing.
 func (c *Config) RemoveException(pattern, except string) (bool, error) {
@@ -195,6 +220,7 @@ func (c *Config) RemoveException(pattern, except string) (bool, error) {
 		if c.Entries[i].Pattern != pattern {
 			continue
 		}
+		except = qualifyException(c.Entries[i].Pattern, except)
 		for j, ex := range c.Entries[i].Except {
 			if ex == except {
 				c.Entries[i].Except = append(c.Entries[i].Except[:j], c.Entries[i].Except[j+1:]...)

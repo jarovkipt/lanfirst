@@ -133,11 +133,12 @@ func entrySubmenu(e ipc.EntryStatus) func() []menuet.MenuItem {
 
 // addException prompts for a hostname under pattern to keep on public DNS.
 func addException(pattern string) {
+	base := strings.TrimPrefix(pattern, "*.")
 	res := menuet.App().Alert(menuet.Alert{
 		MessageText:     "Add exception for " + pattern,
-		InformativeText: "This hostname keeps using public DNS instead of the LAN target. Wildcards allowed, e.g. *.dev." + strings.TrimPrefix(pattern, "*."),
+		InformativeText: "Keeps this host on public DNS instead of the LAN target. Type just the subdomain (e.g. dl) or a full host (dl." + base + "); wildcards ok (e.g. *.dev).",
 		Buttons:         []string{"Add", "Cancel"},
-		Inputs:          []string{"hostname e.g. foo." + strings.TrimPrefix(pattern, "*.")},
+		Inputs:          []string{"e.g. dl   or   dl." + base},
 	})
 	if res.Button != 0 || len(res.Inputs) < 1 { // 0 == "Add"
 		return
